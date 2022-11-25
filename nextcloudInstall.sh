@@ -28,11 +28,10 @@ sha256sum -c nextcloud-${ncver}.zip.sha256 < nextcloud-${ncver}.zip
 echo "now unzipping the package"
 unzip -q nextcloud-${ncver}.zip
 echo "What is the directory you want to install Nextcloud into?"
-read  installdir  
+read installdir  
 echo $installdir "is your chosen directory"
-
 [ -d $installdir ] && echo $installdir "exists"
-[ ! -d $installdir ] && echo $installdir "does not exist" && exit
+[ ! -d $installdir ] && echo $installdir "does not exist. Creating it" && mkdir $installdir
 sudo cp -r nextcloud $installdir
 echo "Just copied the nextcloud files to the install directory at $installdir"
 echo "Now we will set up the database."
@@ -47,5 +46,58 @@ sudo -u postgres psql -U postgres -c "CREATE DATABASE $dbname TEMPLATE template0
 sudo -u postgres psql -U postgres -c "ALTER DATABASE $dbname OWNER TO $dataUser;"
 sudo -u postgres psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE $dbname TO $dataUser;"
 echo Database setup complete 
-echo In order for this to work, you MUST copy your old config one or make a new config file at /etc/apache2/sites-enabled/nextcloud.conf. For more help, please reference Nextcloud documentation
-echo "Name the file nextcloud.conf and put into the directory /etc/apache2/sites-enabled/ then you must run sudo bash postInstall.sh"
+echo "Will you be using a reverse proxy in front of this machine? (y/n)"
+read rproxyExists
+ while [[ "$rproxyExists" != "y" ]] && [[ "$rpoxyExists" != "n" ]];
+  do
+    echo "Invalid input. Re enter y or n"
+    read rproxyExists
+  done
+
+if [[ "$rproxyExists" == "y" ]]; then
+  echo "We will continue assuming you have your reverse proxy all set up with SSL."
+  sed -i -e "s|installdir|${installdir}|g" nextcloud.conf
+  echo "Enter the full domain name that will server nextcloud"
+  read domain
+  sed -i -e "s|domain.tld|$domain|g" nextcloud.conf
+  sudo cp nextcloud.conf /etc/apache2/sites-available/
+  sudo a2ensite nextcloud.conf
+  echo "Enabling required Apache modules"
+  sudo a2enmod rewrite 
+  sudo a2enmod headers
+  sudo a2enmod env 
+  sudo a2enmod dir
+  sudo a2enmod mime 
+  sudo a2enmod setenvif
+  sudo a2dissite 000-default.conf 
+  sudo systemctl restart apache2
+
+fi
+if [[ "$rproxyExists" == "n" ]]; then
+    echo "We will continue as if this will be the priimary machine, with no reverse proxy. This means this server will be set up with SSL certificates provided by Certbot"
+    sed -i -e "s|installdir|${installdir}|g" nextcloud.conf
+    echo "Enter the full domain name that will server nextcloud"
+    read domain
+    sed -i -e "s|domain.tld|$domain|g" nextcloud.conf
+    sudo cp nextcloud.conf /etc/apache2/sites-available/
+    sudo a2ensite nextcloud.conf
+    echo "Enabling required Apache modules"
+    sudo a2enmod rewrite 
+    sudo a2enmod headers
+    sudo a2enmod env 
+    sudo a2enmod dir
+    sudo a2enmod mime 
+    sudo a2enmod setenvif
+    sudo a2enmod ssl
+    sudo systemctl restart apache2
+    sudo a2ensite default-ssl
+    sudo apt install snapd
+    sudo snap install core
+    sudo snap refresh core
+    sudo snap install certbot --classic
+    echo "Now requesting SSL certificates for Nextcloud from Let's Encrypt. You must have ports open on the firewall level and you must have DNS configured for this to work."
+    sudo certbot --apache
+fi 
+sudo chown -R www-data:www-data ${installdir}
+echo "This has completed a large portion of the installation process for Nextcloud. Go the URL you have designated for nextcloud and complete the wizard. If you have any issues, or would like to to do more tuning and security enhacements (highly recommended), please visit the admin manual at https://docs.nextcloud.com/server/latest/admin_manual/installation/index.html  Thanks for using this script!"
+
