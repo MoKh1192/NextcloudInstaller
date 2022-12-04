@@ -2,10 +2,9 @@
 
 echo "THIS IS A NEXTCLOUD INSTALL SCRIPT
 only meant for debian based systems. Uses apache and 
-postgreSQL. This script is meant to be used with
-reverse proxy using NGINX."
+postgreSQL."
 
-if [ $USER != "root" ]; then
+if [ $EUID != "0" ]; then
    echo "You MUST be root, not $USER "
    exit
 else
